@@ -1245,7 +1245,7 @@ func (r *roomLive) maybeStartCountdownLocked() {
 	switch r.Status {
 	case "Ready", "pending":
 		if r.eligibleToStartLocked() {
-			ft := time.Now().Add(45 * time.Second).UTC()
+			ft := time.Now().Add(55 * time.Second).UTC()
 			r.StartTime = &ft
 			r.StartedAt = nil
 			r.Status = "about_to_start"

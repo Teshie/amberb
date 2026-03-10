@@ -148,7 +148,7 @@ type depositSession struct {
 
 /* ===================== Config ===================== */
 var (
-	APIBase               = getenvDefault("API_BASE", "https://henb.teshie.dev")
+	APIBase               = getenvDefault("API_BASE", "https://amber.teshie.dev")
 	AdminSupergroup int64 = -1002877017597
 
 	PayeeName  = "Henok"
@@ -3169,7 +3169,7 @@ func main() {
 	rand.Seed(time.Now().UnixNano())
 
 	botToken := mustEnv("BOT_TOKEN")
-	miniAppURL := getenvDefault("MINI_APP_URL", "https://henb.teshie.dev")
+	miniAppURL := getenvDefault("MINI_APP_URL", "https://amber.teshie.dev")
 
 	bot, err := tgbotapi.NewBotAPI(botToken)
 	if err != nil {

@@ -2575,7 +2575,7 @@ func autoMigrateAll() error {
 }
 
 func seedDefaultRoomsTX(tx *gorm.DB) error {
-	defaults := []int64{10, 20, 50, 100}
+	defaults := []int64{10}
 	for _, stake := range defaults {
 		r := Room{
 			RoomID:      fmt.Sprintf("%d", stake),
@@ -3307,7 +3307,7 @@ func seedRoomsIfEmpty() {
 		return
 	}
 
-	stakes := []int64{10, 20, 50, 100}
+	stakes := []int64{10}
 	for _, s := range stakes {
 		r := Room{
 			RoomID:      fmt.Sprintf("stake-%d", s),

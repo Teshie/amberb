@@ -1,7 +1,7 @@
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: postgres
+    container_name: amber
     environment:
       POSTGRES_USER: ${PG_USER}
       POSTGRES_PASSWORD: ${PG_PASSWORD}
@@ -21,7 +21,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: go-app
+    container_name: amber-app
     environment:
       - PORT=${PORT}
       - PG_HOST=${PG_HOST}              # tip: use 'postgres' here if both are in same compose
@@ -34,8 +34,8 @@ services:
       - JWT_SECRET=${JWT_SECRET}
       - BOT_TOKEN=${BOT_TOKEN}
       - BOTS_ENABLED=true
-      - BOTS_WS_BASE=wss://henb.teshie.dev
-      - BOTS_ROOMS=10,20,50
+      - BOTS_WS_BASE=wss://amber.teshie.dev
+      - BOTS_ROOMS=10
       - BOTS_PER_ROOM=30
       - BOTS_JOIN_JITTER_MS=1500
       - BOTS_REACTION_MS_MIN=300

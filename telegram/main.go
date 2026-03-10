@@ -152,10 +152,10 @@ var (
 	AdminSupergroup int64 = -1002877017597
 
 	PayeeName  = "Henok"
-	PayeePhone = "0915418674"
+	PayeePhone = "0913531747"
 
-	TelebirrAgentAcct  = "0915418674"
-	NigedBankAgentAcct = "1000517969005"
+	TelebirrAgentAcct  = "0913531747"
+	NigedBankAgentAcct = "1000180500964"
 	EBIRRAgentAcct     = "0915418674"
 	AbyssiniaAgentAcct = "147857373"
 
@@ -174,11 +174,11 @@ var (
 	HTTPTimeout = 30 * time.Second
 	UserAgent   = "Mozilla/5.0 (compatible; AddisBot/1.0; +https://example.com)"
 
-	NotifyChatID int64 = -1002877017597
+	NotifyChatID int64 = -5250169596
 
 	// Require credited party to be this exact person (tokenized match)
-	AllowedTelebirrReceiverName = getenvDefault("ALLOWED_RECEIVER_TELEBIRR", "Henok Belay Mendefro")
-	AllowedCBEBirrReceiverName  = getenvDefault("ALLOWED_RECEIVER_CBE", "HENOK BELAY MANDEFRO")
+	AllowedTelebirrReceiverName = getenvDefault("ALLOWED_RECEIVER_TELEBIRR", "bitew enawegaw abebe")
+	AllowedCBEBirrReceiverName  = getenvDefault("ALLOWED_RECEIVER_CBE", "BITEW ENAWGAW ABEBE")
 	AllowedBOAReceiverName      = getenvDefault("ALLOWED_RECEIVER_BOA", "HENOK BELAY MANDEFRO")
 	AllowedEBirrReceiverName    = getenvDefault("ALLOWED_RECEIVER_EBIRR", "Henok Belay Mandafro")
 	// NEW: referral bonus amount used for the notifier message
@@ -2676,7 +2676,7 @@ func sendMessageWithWebApp(bot *tgbotapi.BotAPI, chatID int64, text string, game
 	keyboard := CustomInlineKeyboardMarkup{
 		InlineKeyboard: [][]InlineKeyboardButtonWithWebApp{
 			{
-				{Text: "🎮 Play", WebApp: &WebApp{URL: gameURL}},
+				{Text: "🎮 Play 10", WebApp: &WebApp{URL: gameURL}},
 			},
 		},
 	}
@@ -2709,7 +2709,7 @@ func sendMessageWithWebApp(bot *tgbotapi.BotAPI, chatID int64, text string, game
 }
 
 func playButtons(gameURL string) tgbotapi.InlineKeyboardMarkup {
-	btn := tgbotapi.NewInlineKeyboardButtonURL("🎮 Play", gameURL)
+	btn := tgbotapi.NewInlineKeyboardButtonURL("🎮 Play 10", gameURL)
 	return tgbotapi.NewInlineKeyboardMarkup(tgbotapi.NewInlineKeyboardRow(btn))
 }
 
@@ -2733,7 +2733,7 @@ func canonWallet(t string) string {
 func sendPhotoWithWebApp(bot *tgbotapi.BotAPI, chatID int64, photo string, captionHTML string, gameURL string) error {
 	kb := CustomInlineKeyboardMarkup{
 		InlineKeyboard: [][]InlineKeyboardButtonWithWebApp{
-			{{Text: "🎮 Play", WebApp: &WebApp{URL: gameURL}}},
+			{{Text: "🎮 Play 10", WebApp: &WebApp{URL: gameURL}}},
 		},
 	}
 	payload := map[string]any{
@@ -3045,7 +3045,7 @@ func setupBotCommands(bot *tgbotapi.BotAPI) error {
 		},
 		{
 			Command:     "play",
-			Description: "🎮 Play game",
+			Description: "🎮 Play 10 game",
 		},
 		{
 			Command:     "deposit",
@@ -3121,9 +3121,9 @@ func sendDepositMethods(bot *tgbotapi.BotAPI, chatID int64) {
 			tgbotapi.NewInlineKeyboardButtonData("Telebirr", "dep:telebirr_agent"),
 			tgbotapi.NewInlineKeyboardButtonData("CBE", "dep:niged_bank_agent"),
 		),
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("EBIRR", "dep:e_birr_agent"),
-		),
+		// tgbotapi.NewInlineKeyboardRow(
+		// 	tgbotapi.NewInlineKeyboardButtonData("EBIRR", "dep:e_birr_agent"),
+		// ),
 	}
 	m := tgbotapi.NewMessage(chatID, "Please select the bank option you wish to use for the top-up.")
 	m.ReplyMarkup = tgbotapi.NewInlineKeyboardMarkup(rows...)
@@ -3459,7 +3459,7 @@ func main() {
 								// URL button fallback like Bonus mode
 								p.ReplyMarkup = tgbotapi.NewInlineKeyboardMarkup(
 									tgbotapi.NewInlineKeyboardRow(
-										tgbotapi.NewInlineKeyboardButtonURL("🎮 Play Now", playURL),
+										tgbotapi.NewInlineKeyboardButtonURL("🎮 Play 10 Now", playURL),
 									),
 								)
 							}
@@ -3492,7 +3492,7 @@ func main() {
 								// URL button fallback like Bonus mode
 								msg.ReplyMarkup = tgbotapi.NewInlineKeyboardMarkup(
 									tgbotapi.NewInlineKeyboardRow(
-										tgbotapi.NewInlineKeyboardButtonURL("🎮 Play Now", playURL),
+										tgbotapi.NewInlineKeyboardButtonURL("🎮 Play 10 Now", playURL),
 									),
 								)
 							}
@@ -3601,7 +3601,7 @@ func main() {
 					// Fallback: simple URL button (opens externally if WebApp not supported)
 					out.ReplyMarkup = tgbotapi.NewInlineKeyboardMarkup(
 						tgbotapi.NewInlineKeyboardRow(
-							tgbotapi.NewInlineKeyboardButtonURL("🎮 Play Now", playURL),
+							tgbotapi.NewInlineKeyboardButtonURL("🎮 Play 10 Now", playURL),
 						),
 					)
 					if _, e2 := bot.Send(out); e2 != nil {
@@ -3844,7 +3844,7 @@ func main() {
 			sendDepositMethods(bot, chatID) // show ONLY the methods
 			continue
 
-		case "🎮 Play":
+		case "🎮 Play 10":
 			if up.Message.From == nil {
 				bot.Send(tgbotapi.NewMessage(chatID, "Cannot identify user."))
 				continue
@@ -3876,7 +3876,7 @@ func main() {
 
 			gameURL := strings.TrimRight(miniAppURL, "/") + "/" + token
 
-			if err := sendMessageWithWebApp(bot, chatID, "Choose how you want to open the game:", gameURL); err != nil {
+			if err := sendMessageWithWebApp(bot, chatID, "🍀 Best of luck on your gaming adventure! 🎮:", gameURL); err != nil {
 				open := tgbotapi.NewMessage(chatID, "Choose how you want to open the game:")
 				open.ReplyMarkup = playButtons(gameURL)
 				bot.Send(open)
@@ -3997,10 +3997,10 @@ func main() {
 			bot.Send(tgbotapi.NewMessage(chatID, "Pick a stake → choose a board → select numbers."))
 			continue
 		case "☎️ Contact Us":
-			bot.Send(tgbotapi.NewMessage(chatID, "Support: @l8rrl5oii7"))
+			bot.Send(tgbotapi.NewMessage(chatID, "Support: 0913531747"))
 			continue
 		case "👥 Join Us":
-			bot.Send(tgbotapi.NewMessage(chatID, "Join our channel: t.me/direbingo"))
+			bot.Send(tgbotapi.NewMessage(chatID, "Join our channel: "))
 			continue
 		}
 
@@ -5448,7 +5448,7 @@ func sendMainMenu(bot *tgbotapi.BotAPI, chatID int64, miniAppURL string) {
 	rows := [][]tgbotapi.KeyboardButton{
 		// Row 1
 		tgbotapi.NewKeyboardButtonRow(
-			tgbotapi.NewKeyboardButton("🎮 Play"),
+			tgbotapi.NewKeyboardButton("🎮 Play 10"),
 		),
 		// Row 2
 		tgbotapi.NewKeyboardButtonRow(

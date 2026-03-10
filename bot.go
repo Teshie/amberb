@@ -198,7 +198,7 @@ func desiredBotCount(roomID string, now time.Time) int {
 			frac = 0
 		}
 
-		peak := triple{100, 90, 60} // your chosen late-night peak
+		peak := triple{400, 0, 0} // your chosen late-night peak
 		base = triple{
 			int(frac * float64(peak.r10)),
 			int(frac * float64(peak.r20)),
@@ -225,9 +225,16 @@ func desiredBotCount(roomID string, now time.Time) int {
 // botOnDuty decides if a bot with given slotIdx (0-based) should be active now
 // for this room, based on desiredBotCount.
 // NOTE: conf.json Bots MUST be >= max desiredBots for that room.
+// func botOnDuty(roomID string, slotIdx int, now time.Time) bool {
+// 	target := desiredBotCount(roomID, now)
+// 	return slotIdx < target
+// }
 func botOnDuty(roomID string, slotIdx int, now time.Time) bool {
-	target := desiredBotCount(roomID, now)
-	return slotIdx < target
+    // target := desiredBotCount(roomID, now)
+    // return slotIdx < target
+    
+    // TEMPORARY: Always on duty up to the configured max
+    return true  // This will use all 450 bots
 }
 
 // ---------------- Room-level schedule coordination (per-round) ----------------

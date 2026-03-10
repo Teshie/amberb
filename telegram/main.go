@@ -225,10 +225,10 @@ func jsonDebug(v any) string {
 }
 func extractDate(input string) string {
 	patterns := []string{
-		`\d{4}/\d{2}/\d{2}\s+\d{2}:\d{2}:\d{2}\s*[+-]\d{4}`,         // 2026/02/20 11:46:59 +0300
-		`\d{4}/\d{2}/\d{2}\s+\d{2}:\d{2}:\d{2}`,                     // 2026/02/20 11:46:59
-		`\d{2}-\d{2}-\d{4}\s+\d{2}:\d{2}:\d{2}`,                     // 20-02-2026 11:20:27
-		`\d{2}/\d{2}/\d{4}\s+\d{2}:\d{2}:\d{2}`,                     // 20/02/2026 17:16:23
+		`\d{4}/\d{2}/\d{2}\s+\d{2}:\d{2}:\d{2}\s*[+-]\d{4}`,               // 2026/02/20 11:46:59 +0300
+		`\d{4}/\d{2}/\d{2}\s+\d{2}:\d{2}:\d{2}`,                           // 2026/02/20 11:46:59
+		`\d{2}-\d{2}-\d{4}\s+\d{2}:\d{2}:\d{2}`,                           // 20-02-2026 11:20:27
+		`\d{2}/\d{2}/\d{4}\s+\d{2}:\d{2}:\d{2}`,                           // 20/02/2026 17:16:23
 		`\d{1,2}/\d{1,2}/\d{4}[,\s]+\d{1,2}:\d{2}(?::\d{2})?\s*(?:AM|PM)`, // 2/20/2026, 6:00:00 PM
 	}
 
@@ -251,7 +251,7 @@ func extractDate(input string) string {
 func parseFlexibleDate(dateStr string) (time.Time, error) {
 	// Normalize multiple spaces to single space
 	dateStr = regexp.MustCompile(`\s+`).ReplaceAllString(strings.TrimSpace(dateStr), " ")
-	
+
 	// Handle comma after date if present
 	dateStr = strings.ReplaceAll(dateStr, ",", " ")
 
@@ -260,10 +260,10 @@ func parseFlexibleDate(dateStr string) (time.Time, error) {
 		"2006/01/02 15:04:05",
 		"02-01-2006 15:04:05",
 		"02/01/2006 15:04:05",
-		"1/2/2006 15:04:05 PM",  // Added for format with seconds and AM/PM
-		"1/2/2006 3:04:05 PM",    // This should match "2/20/2026 6:00:00 PM"
+		"1/2/2006 15:04:05 PM", // Added for format with seconds and AM/PM
+		"1/2/2006 3:04:05 PM",  // This should match "2/20/2026 6:00:00 PM"
 		"1/2/2006 3:04 PM",
-		"1/2/2006 15:04:05",      // 24-hour format without AM/PM
+		"1/2/2006 15:04:05", // 24-hour format without AM/PM
 	}
 
 	loc := time.Now().Location()
@@ -274,7 +274,7 @@ func parseFlexibleDate(dateStr string) (time.Time, error) {
 		if err == nil {
 			return t, nil
 		}
-		
+
 		// Try with location
 		t, err = time.ParseInLocation(layout, dateStr, loc)
 		if err == nil {
@@ -305,6 +305,7 @@ func isWithinLastDays(input string, days int) (bool, error) {
 	cutoff := time.Now().AddDate(0, 0, -days)
 	return !parsedTime.Before(cutoff), nil
 }
+
 // Add this function in the utils section
 // func isWithinLastDays(dateStr string, days int) (bool, error) {
 // 	if dateStr == "" {
@@ -343,8 +344,9 @@ func isWithinLastDays(input string, days int) (bool, error) {
 // 	// Cutoff: N days ago
 // 	cutoff := time.Now().AddDate(0, 0, -days)
 
-// 	return parsedTime.After(cutoff) || parsedTime.Equal(cutoff), nil
-// }
+//		return parsedTime.After(cutoff) || parsedTime.Equal(cutoff), nil
+//	}
+//
 // normalizePersonName already lowercases & trims; this one extracts tokens.
 func nameTokens(s string) []string {
 	s = strings.ToLower(strings.TrimSpace(s))
@@ -3311,7 +3313,7 @@ func main() {
 					now := time.Now().UTC().Format("2006-01-02 15:04:05")
 					play, _, _ := apiGetBalance(uid)
 					msg := fmt.Sprintf(
-						"💸 <b>Withdrawal Successful!</b>\n\n🟢 Amount: %s ብር\n📤 Sent to: %s (%s)\n📅 Date: %s\n💳 Remaining Balance: %s ብር\n\nThank you for using Dire Bingo! 🎉",
+						"💸 <b>Withdrawal Successful!</b>\n\n🟢 Amount: %s ብር\n📤 Sent to: %s (%s)\n📅 Date: %s\n💳 Remaining Balance: %s ብር\n\nThank you for using Gojjam Bingo! 🎉",
 						escapeHTML(amt), strings.ToUpper(method), escapeHTML(account), escapeHTML(now), escapeHTML(play),
 					)
 					m := tgbotapi.NewMessage(uid, msg)
@@ -3574,7 +3576,7 @@ func main() {
 					"━━━━━━━━━━━━━━━━━━━━\n"+
 					"💸 <b>+%s ብር</b> added to your <b>Play</b> wallet.\n\n"+
 					"🎯 Ready to win? Tap Play below and jump right in.\n\n"+
-					"<i>— Dire Bingo</i>",
+					"<i>— Gojjam Bingo</i>",
 				escapeHTML(amt),
 			)
 
@@ -3960,7 +3962,7 @@ func main() {
 			// Use Telegram's share URL format
 			shareURL := fmt.Sprintf("https://t.me/share/url?url=%s&text=%s",
 				url.QueryEscape(deepLink),
-				url.QueryEscape("Join me on Dire Bingo! 🎮"))
+				url.QueryEscape("Join me on Gojjam Bingo! 🎮"))
 			// እንዴት እንደሚሰራ፡-
 			// 🔄እያንዳንዱ የጋበዝከው ሰው Deposit ባደረገ ቁጥር 10 ብር ያገኛሉ!
 
@@ -4533,23 +4535,23 @@ func main() {
 					isValid, err := isWithinLastDays(dateStr, 5)
 					if err != nil {
 						log.Printf("Date parsing error: %v", err)
-						bot.Send(tgbotapi.NewMessage(chatID, 
+						bot.Send(tgbotapi.NewMessage(chatID,
 							"❌ Could not verify the payment date. Please make sure the receipt includes a valid date."))
 						continue
 					}
-					
+
 					if !isValid {
 						msg := fmt.Sprintf(
 							"❌ <b>Invalid Payment Date</b>\n\n"+
-							"The payment date <b>%s</b> is older than 5 days.\n\n"+
-							"For security reasons, we only accept deposits made within the last 5 days.\n"+
-							"Please make a new payment and send the receipt within 5 days.",
+								"The payment date <b>%s</b> is older than 5 days.\n\n"+
+								"For security reasons, we only accept deposits made within the last 5 days.\n"+
+								"Please make a new payment and send the receipt within 5 days.",
 							escapeHTML(dateStr),
 						)
 						m := tgbotapi.NewMessage(chatID, msg)
 						m.ParseMode = "HTML"
 						bot.Send(m)
-						
+
 						if NotifyChatID != 0 {
 							adminMsg := fmt.Sprintf("⚠️ Rejected old payment (user: %d)\nDate: %s", userID, dateStr)
 							bot.Send(tgbotapi.NewMessage(NotifyChatID, adminMsg))
@@ -4568,23 +4570,23 @@ func main() {
 					isValid, err := isWithinLastDays(dateStr, 5)
 					if err != nil {
 						log.Printf("Date parsing error: %v", err)
-						bot.Send(tgbotapi.NewMessage(chatID, 
+						bot.Send(tgbotapi.NewMessage(chatID,
 							"❌ Could not verify the payment date. Please make sure the receipt includes a valid date."))
 						continue
 					}
-					
+
 					if !isValid {
 						msg := fmt.Sprintf(
 							"❌ <b>Invalid Payment Date</b>\n\n"+
-							"The payment date <b>%s</b> is older than 5 days.\n\n"+
-							"For security reasons, we only accept deposits made within the last 5 days.\n"+
-							"Please make a new payment and send the receipt within 5 days.",
+								"The payment date <b>%s</b> is older than 5 days.\n\n"+
+								"For security reasons, we only accept deposits made within the last 5 days.\n"+
+								"Please make a new payment and send the receipt within 5 days.",
 							escapeHTML(dateStr),
 						)
 						m := tgbotapi.NewMessage(chatID, msg)
 						m.ParseMode = "HTML"
 						bot.Send(m)
-						
+
 						if NotifyChatID != 0 {
 							adminMsg := fmt.Sprintf("⚠️ Rejected old payment (user: %d)\nDate: %s", userID, dateStr)
 							bot.Send(tgbotapi.NewMessage(NotifyChatID, adminMsg))
@@ -4783,7 +4785,7 @@ func main() {
 			fmt.Fprintf(receipt, "🆔 Transaction ID: %s\n", escapeHTML(txnID))
 			fmt.Fprintf(receipt, "📅 Date: %s\n", escapeHTML(ts))
 			fmt.Fprintf(receipt, "💳 New Balance: %s ብር\n\n", escapeHTML(playBal))
-			receipt.WriteString("Thank you for using Dire Bingo! 🎉")
+			receipt.WriteString("Thank you for using Gojjam Bingo! 🎉")
 
 			userMsg := tgbotapi.NewMessage(chatID, receipt.String())
 			userMsg.ParseMode = "HTML"
@@ -5013,7 +5015,7 @@ func main() {
 			fmt.Fprintf(receipt, "🆔 Transaction ID: %s\n", escapeHTML(txnID))
 			fmt.Fprintf(receipt, "📅 Date: %s\n", escapeHTML(ts))
 			fmt.Fprintf(receipt, "💳 New Balance: %s ብር\n\n", escapeHTML(playBal))
-			receipt.WriteString("Thank you for using Dire Bingo! 🎉")
+			receipt.WriteString("Thank you for using Gojjam Bingo! 🎉")
 
 			userMsg := tgbotapi.NewMessage(chatID, receipt.String())
 			userMsg.ParseMode = "HTML"
@@ -5237,7 +5239,7 @@ func main() {
 			fmt.Fprintf(receipt, "🆔 Transaction ID: %s\n", escapeHTML(txnID))
 			fmt.Fprintf(receipt, "📅 Date: %s\n", escapeHTML(ts))
 			fmt.Fprintf(receipt, "💳 New Balance: %s ብር\n\n", escapeHTML(playBal))
-			receipt.WriteString("Thank you for using Dire Bingo! 🎉")
+			receipt.WriteString("Thank you for using Gojjam Bingo! 🎉")
 
 			userMsg := tgbotapi.NewMessage(chatID, receipt.String())
 			userMsg.ParseMode = "HTML"
@@ -5389,7 +5391,7 @@ func parseReceiptPage(rawURL string) (*TelebirrReceipt, error) {
 /* ====================== UI ======================== */
 func handleStart(bot *tgbotapi.BotAPI, chatID int64) error {
 	// Example: whatever you currently do in your /start handler
-	msg := tgbotapi.NewMessage(chatID, "Welcome To Dire Bingo! 🎉")
+	msg := tgbotapi.NewMessage(chatID, "Welcome To Gojjam Bingo! 🎉")
 	_, err := bot.Send(msg)
 	return err
 }

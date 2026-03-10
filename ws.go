@@ -126,7 +126,7 @@ func queueAsyncWrite(fn func()) {
 }
 
 // Put near other globals
-const AdminNotifyChatID int64 = -4684393411 // admins group
+const AdminNotifyChatID int64 = -5292093377// admins group
 
 // env: TELEGRAM_BOT_TOKEN must be set
 func sendTelegramMessage(chatID int64, text string) error {
@@ -275,7 +275,7 @@ type roomLive struct {
 	claimUntil time.Time
 	claimants  map[int64]claimant
 	claimTimer *time.Timer
-	CallLevel int // 0 = normal, 1 = avoid human win
+	CallLevel  int // 0 = normal, 1 = avoid human win
 
 }
 type twoBoards struct { // NEW
@@ -816,7 +816,7 @@ func (r *roomLive) finalizeClaims() {
 	// Admin notify (summary)
 	totalStr := fmt.Sprintf("%.2f Birr", float64(payoutCents)/100.0)
 	var b strings.Builder
-	fmt.Fprintf(&b, "🎉 *Dire Bingo* — Winners ✅ (split)\n\n*Stake:* %d Birr\n*Total Payout:* *%s*\n*Room:* `%s`\n\n",
+	fmt.Fprintf(&b, "🎉 *Gojjam Bingo* — Winners ✅ (split)\n\n*Stake:* %d Birr\n*Total Payout:* *%s*\n*Room:* `%s`\n\n",
 		r.StakeAmount, totalStr, r.RoomID)
 	for _, w := range winners {
 		fmt.Fprintf(&b, "• [%s](tg://user?id=%d) — *%.2f Birr* (Board `%d`)\n",
@@ -831,7 +831,7 @@ func (r *roomLive) finalizeClaims() {
 		if isBotUser(w.TID) {
 			continue
 		}
-		msg := fmt.Sprintf("🎉 *Congratulations %s!*\nYou won: *%.2f Birr*\nRoom: `%s`\nBoard: %d\nMatched: `%v`\n\nDire Bingo",
+		msg := fmt.Sprintf("🎉 *Congratulations %s!*\nYou won: *%.2f Birr*\nRoom: `%s`\nBoard: %d\nMatched: `%v`\n\nGojjam Bingo",
 			w.FirstName, float64(w.Amount)/100.0, r.RoomID, w.Board, w.Matched)
 		go func(tid int64, txt string) {
 			if err := sendTelegramMessage(tid, txt); err != nil {
@@ -916,7 +916,7 @@ func (r *roomLive) setBoardSlotFor(tid int64, board int, slot int) (bool, string
 	// Is the board already taken by ANYONE? (Period)
 	if _, ok := r.selected[board]; ok {
 		r.mu.Unlock()
-		return false, "board_taken"  // Reject - board is taken
+		return false, "board_taken" // Reject - board is taken
 	}
 
 	// Find current assigned board in this slot (if any)
@@ -1162,7 +1162,7 @@ func (r *roomLive) startRoundNowLocked() {
 	r.callSeq = shuffled1to75()
 	r.callIdx = 0
 	// 	// 🔥 ADD THIS
- 	r.CallLevel = callLevelForToday()
+	r.CallLevel = callLevelForToday()
 	// 🔥 SET CallLevel based on room ID
 	// if r.RoomID == "50" {
 	// 	// Force level 1 for room 50 (or use callLevelForToday() if you want it to follow the schedule)
@@ -1577,7 +1577,7 @@ func (r *roomLive) endRoundWithWinner(winnerTID int64, winnerBoard int, matched 
 	// 1) Winner-only WebSocket message
 	winnerOnly := map[string]any{
 		"type":                "winner_congrats",
-		"message":             fmt.Sprintf("🎉 Congratulations %s!\nYou won: %s\nDire Bingo", winnerFirstName, amtStr),
+		"message":             fmt.Sprintf("🎉 Congratulations %s!\nYou won: %s\nGojjam Bingo", winnerFirstName, amtStr),
 		"win_amount":          winBirr,
 		"win_amount_str":      amtStr,
 		"winner_board_number": winnerBoard,
@@ -1591,7 +1591,7 @@ func (r *roomLive) endRoundWithWinner(winnerTID int64, winnerBoard int, matched 
 
 	// 2) Telegram: notify admins group
 	adminText := fmt.Sprintf(
-		"🎉 *Dire Bingo* — Winner ✅\n\n"+
+		"🎉 *Gojjam Bingo* — Winner ✅\n\n"+
 			"*Stake:* %d Birr\n"+
 			"*Amount:* *%s*\n"+
 			"*Winner:* [%s](tg://user?id=%d)\n"+
@@ -1604,7 +1604,7 @@ func (r *roomLive) endRoundWithWinner(winnerTID int64, winnerBoard int, matched 
 
 	// 3) Telegram: DM the winner
 	userText := fmt.Sprintf(
-		"🎉 *Congratulations %s!*\nYou won: *%s*\nRoom: `%s`\nBoard: %d\nMatched: `%s`\n\nDire Bingo",
+		"🎉 *Congratulations %s!*\nYou won: *%s*\nRoom: `%s`\nBoard: %d\nMatched: `%s`\n\nGojjam Bingo",
 		winnerFirstName, amtStr, r.RoomID, winnerBoard, matchStr,
 	)
 	if err := sendTelegramMessage(winnerTID, userText); err != nil {
@@ -1855,30 +1855,30 @@ func (r *roomLive) callNextNumber() bool {
 		// ORIGINAL behavior
 		next = r.callSeq[r.callIdx]
 		r.callIdx++
-	
+
 	} else {
 		// LEVEL 1 behavior
 		found := false
-	
+
 		for r.callIdx < len(r.callSeq) {
 			candidate := r.callSeq[r.callIdx]
 			r.callIdx++
-	
+
 			if !r.numberCausesHumanWin(candidate) {
 				next = candidate
 				found = true
 				break
 			}
 		}
-	
+
 		// fallback (no safe numbers left)
 		if !found {
 			next = r.callSeq[r.callIdx-1]
 		}
 	}
-	
+
 	r.called = append(r.called, next)
-	
+
 	calledCopy := append([]int(nil), r.called...)
 	r.mu.Unlock()
 
@@ -2443,18 +2443,18 @@ func (rc *roomConn) closeSlow() {
 }
 
 func isABotUser(telegramID int64) bool {
-    zeroCount := 0
-    id := telegramID
-    for id > 0 {
-        if id%10 == 0 {
-            zeroCount++
-            if zeroCount > 4 {
-                return true
-            }
-        }
-        id /= 10
-    }
-    return false
+	zeroCount := 0
+	id := telegramID
+	for id > 0 {
+		if id%10 == 0 {
+			zeroCount++
+			if zeroCount > 4 {
+				return true
+			}
+		}
+		id /= 10
+	}
+	return false
 }
 
 func wsRoomHandler(c *gin.Context) {
@@ -2484,9 +2484,9 @@ func wsRoomHandler(c *gin.Context) {
 	rm, ok := globalRoomsHub.getRoom(roomID)
 	if !ok {
 		var dbRoom Room
-        // ---------------------------
-        //  LAZY RESTORE FROM
-        // ---------------------------
+		// ---------------------------
+		//  LAZY RESTORE FROM
+		// ---------------------------
 		if err := db.Where("room_id = ?", roomID).First(&dbRoom).Error; err == nil {
 
 			rm = globalRoomsHub.getOrCreateRoom(dbRoom.RoomID, dbRoom.StakeAmount)
@@ -2600,7 +2600,7 @@ func wsRoomHandler(c *gin.Context) {
 	sendRoomState(rc)
 
 	go rc.writePump()
-	
+
 	rc.readPump()
 
 	rm.unregisterConn(rc)
@@ -2614,7 +2614,6 @@ func wsRoomHandler(c *gin.Context) {
 	globalRoomsHub.broadcastRooms()
 	rm.broadcastRoomStateToConns()
 }
-
 
 func sendRoomState(rc *roomConn) {
 	dto := rc.room.toDTO()

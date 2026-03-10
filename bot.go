@@ -114,7 +114,7 @@ func newBotConfig() botConfig {
 
 		JoinJitter: 1500 * time.Millisecond, // [750ms .. 1500ms] initial join jitter
 
-		SlotSpacing:    250 * time.Millisecond,
+		SlotSpacing:    150 * time.Millisecond,
 		SelectDelayMin: 0,
 		SelectDelayMax: 0,
 		SmallJitterMax: 200 * time.Millisecond,

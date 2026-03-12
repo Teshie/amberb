@@ -188,7 +188,7 @@ func desiredBotCount(roomID string, now time.Time) int {
 		totalWindow := (24*60 + 30) - (23*60 + 30) // 60 minutes
 
 		if totalWindow <= 0 {
-			base = triple{170, 0, 0}
+			base = triple{100, 0, 0}
 			break
 		}
 
@@ -198,7 +198,7 @@ func desiredBotCount(roomID string, now time.Time) int {
 			frac = 0
 		}
 
-		peak := triple{170, 0, 0} // your chosen late-night peak
+		peak := triple{100, 90, 60} // your chosen late-night peak
 		base = triple{
 			int(frac * float64(peak.r10)),
 			int(frac * float64(peak.r20)),
@@ -209,7 +209,6 @@ func desiredBotCount(roomID string, now time.Time) int {
 		// 00:30–05:00 → full rest
 		base = triple{70, 57, 54}
 	}
-
 
 	switch roomID {
 	case "10":
@@ -224,11 +223,41 @@ func desiredBotCount(roomID string, now time.Time) int {
 }
 
 // botOnDuty decides if a bot with given slotIdx (0-based) should be active now
-// for this room, based on desiredBotCount.
+// for this room, based on desiredBotCount with random variance.
 // NOTE: conf.json Bots MUST be >= max desiredBots for that room.
 func botOnDuty(roomID string, slotIdx int, now time.Time) bool {
 	target := desiredBotCount(roomID, now)
+	// Apply random variance: reduce by 0 to 20 bots, changes every minute
+	variance := getRoomVariance(roomID, now)
+	target = target - variance
+	if target < 0 {
+		target = 0
+	}
 	return slotIdx < target
+}
+
+// Per-room random variance that changes every minute
+var (
+	varianceMu    sync.Mutex
+	roomVariance  = map[string]int{}
+	varianceTime  = map[string]int64{} // minute timestamp when variance was set
+)
+
+// getRoomVariance returns a random variance (0-20) for the room, refreshed every minute
+func getRoomVariance(roomID string, now time.Time) int {
+	currentMinute := now.Unix() / 60
+
+	varianceMu.Lock()
+	defer varianceMu.Unlock()
+
+	lastMinute, exists := varianceTime[roomID]
+	if !exists || lastMinute != currentMinute {
+		// Generate new random variance: 0 to 20 bots
+		roomVariance[roomID] = mathrand.Intn(21) // 0-20
+		varianceTime[roomID] = currentMinute
+	}
+
+	return roomVariance[roomID]
 }
 
 // ---------------- Room-level schedule coordination (per-round) ----------------

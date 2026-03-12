@@ -114,12 +114,12 @@ func newBotConfig() botConfig {
 
 		JoinJitter: 1500 * time.Millisecond, // [750ms .. 1500ms] initial join jitter
 
-		SlotSpacing:    250 * time.Millisecond,
+		SlotSpacing:    80 * time.Millisecond,  // Reduced from 250ms - allows 150 bots in ~12 seconds
 		SelectDelayMin: 0,
 		SelectDelayMax: 0,
-		SmallJitterMax: 200 * time.Millisecond,
+		SmallJitterMax: 100 * time.Millisecond, // Reduced from 200ms
 
-		RetryWithinAfterSelect: 2 * time.Second,
+		RetryWithinAfterSelect: 5 * time.Second, // Extended from 2s for more retry opportunities
 
 		ReactMin:         300 * time.Millisecond,
 		ReactMax:         1200 * time.Millisecond,
@@ -209,6 +209,7 @@ func desiredBotCount(roomID string, now time.Time) int {
 		// 00:30–05:00 → full rest
 		base = triple{70, 57, 54}
 	}
+
 
 	switch roomID {
 	case "10":
@@ -453,6 +454,11 @@ func botSession(ctx context.Context, cfg botConfig, roomID string, tid int64, sl
 		startRetryTimer  *time.Timer
 		startRetryActive bool
 		committedCount   int
+
+		// Track latest room state for fresh board selection
+		latestRoom       map[string]any
+		selectRetryTimer *time.Timer
+		selectRetryCount int
 	}
 
 	st := &roundState{
@@ -464,6 +470,9 @@ func botSession(ctx context.Context, cfg botConfig, roomID string, tid int64, sl
 		startRetryTimer:  nil,
 		startRetryActive: false,
 		committedCount:   0,
+		latestRoom:       nil,
+		selectRetryTimer: nil,
+		selectRetryCount: 0,
 	}
 
 	send := func(v any) error {
@@ -476,8 +485,13 @@ func botSession(ctx context.Context, cfg botConfig, roomID string, tid int64, sl
 			st.selectTimer.Stop()
 			st.selectTimer = nil
 		}
+		if st.selectRetryTimer != nil {
+			st.selectRetryTimer.Stop()
+			st.selectRetryTimer = nil
+		}
 		st.pendingChoice = nil
 		st.selectAt = time.Time{}
+		st.selectRetryCount = 0
 	}
 	cancelStartRetry := func() {
 		if st.startRetryTimer != nil {
@@ -547,10 +561,14 @@ func botSession(ctx context.Context, cfg botConfig, roomID string, tid int64, sl
 		loop()
 	}
 
-	pickAndSendBoard := func(room map[string]any) {
+	// Declare scheduleSelectRetry first for recursive calls
+	var scheduleSelectRetry func()
+
+	pickAndSendBoard := func() {
+		// Use the latest room state, not stale captured data
 		taken := map[int]bool{}
-		if room != nil {
-			if arr, ok := room["selected_board_numbers"].([]any); ok {
+		if st.latestRoom != nil {
+			if arr, ok := st.latestRoom["selected_board_numbers"].([]any); ok {
 				for _, v := range arr {
 					if f, ok := v.(float64); ok {
 						taken[int(f)] = true
@@ -563,6 +581,24 @@ func botSession(ctx context.Context, cfg botConfig, roomID string, tid int64, sl
 			st.pendingChoice = &choice
 			_ = send(map[string]any{"action": "set_board", "board_number": choice})
 		}
+	}
+
+	// Schedule automatic retry for board selection if not confirmed
+	scheduleSelectRetry = func() {
+		if st.selectRetryTimer != nil {
+			return // already scheduled
+		}
+		st.selectRetryTimer = time.AfterFunc(500*time.Millisecond, func() {
+			st.selectRetryTimer = nil
+			// Only retry if still pre-play, not committed, no board confirmed, and still on duty
+			if isPrePlayStatus(st.status) && !st.boardCommitted && st.myBoard == nil && botOnDuty(roomID, slotIdx, time.Now()) {
+				st.selectRetryCount++
+				if st.selectRetryCount <= 10 { // Max 10 retries
+					pickAndSendBoard()
+					scheduleSelectRetry() // Schedule next retry
+				}
+			}
+		})
 	}
 
 	// read loop
@@ -580,6 +616,9 @@ func botSession(ctx context.Context, cfg botConfig, roomID string, tid int64, sl
 		case "room_state":
 			room, _ := msg["room"].(map[string]any)
 			oldStatus := st.status
+
+			// Store the latest room state for fresh board selection
+			st.latestRoom = room
 
 			// update status & startAt
 			if room != nil {
@@ -654,7 +693,8 @@ func botSession(ctx context.Context, cfg botConfig, roomID string, tid int64, sl
 						st.selectTimer = time.AfterFunc(delay, func() {
 							// Only select if still pre-play, not committed, no board, and still on duty
 							if isPrePlayStatus(st.status) && !st.boardCommitted && st.myBoard == nil && botOnDuty(roomID, slotIdx, time.Now()) {
-								pickAndSendBoard(room)
+								pickAndSendBoard()
+								scheduleSelectRetry() // Auto-retry if selection fails
 							}
 						})
 					}
@@ -706,25 +746,15 @@ func botSession(ctx context.Context, cfg botConfig, roomID string, tid int64, sl
 			// round ended; per-round flags are reset when we re-enter pre-play via room_state
 
 		case "error":
-			// selection conflict? retry quickly if still within retry window after our slot time
-			if isPrePlayStatus(st.status) && st.myBoard == nil && !st.boardCommitted && !st.selectAt.IsZero() {
+			// selection conflict? schedule retry with fresh room data
+			if isPrePlayStatus(st.status) && st.myBoard == nil && !st.boardCommitted {
 				if time.Since(st.selectAt) <= cfg.RetryWithinAfterSelect {
-					_ = tryImmediateRetrySend(roomID, conn, cfg)
+					// Use the new retry mechanism with fresh data
+					scheduleSelectRetry()
 				}
 			}
 		}
 	}
-}
-
-// tryImmediateRetrySend sends a fresh set_board quickly after a conflict
-func tryImmediateRetrySend(roomID string, conn *websocket.Conn, cfg botConfig) error {
-	choice := pickBoard(map[int]bool{}, cfg.BoardSelectStyle) // fallback random without taken set
-	if choice <= 0 {
-		return nil
-	}
-	b, _ := json.Marshal(map[string]any{"action": "set_board", "board_number": choice})
-	_ = conn.SetWriteDeadline(time.Now().Add(4 * time.Second))
-	return conn.WriteMessage(websocket.TextMessage, b)
 }
 
 func pickBoard(taken map[int]bool, style string) int {

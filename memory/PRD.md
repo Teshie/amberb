@@ -1,4 +1,4 @@
-# Gojjam Bingo Backend PRD
+# Sky Bingo Backend PRD
 
 ## Original Problem Statement
 

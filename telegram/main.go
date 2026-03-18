@@ -3313,7 +3313,7 @@ func main() {
 					now := time.Now().UTC().Format("2006-01-02 15:04:05")
 					play, _, _ := apiGetBalance(uid)
 					msg := fmt.Sprintf(
-						"💸 <b>Withdrawal Successful!</b>\n\n🟢 Amount: %s ብር\n📤 Sent to: %s (%s)\n📅 Date: %s\n💳 Remaining Balance: %s ብር\n\nThank you for using Gojjam Bingo! 🎉",
+						"💸 <b>Withdrawal Successful!</b>\n\n🟢 Amount: %s ብር\n📤 Sent to: %s (%s)\n📅 Date: %s\n💳 Remaining Balance: %s ብር\n\nThank you for using Sky Bingo! 🎉",
 						escapeHTML(amt), strings.ToUpper(method), escapeHTML(account), escapeHTML(now), escapeHTML(play),
 					)
 					m := tgbotapi.NewMessage(uid, msg)
@@ -3576,7 +3576,7 @@ func main() {
 					"━━━━━━━━━━━━━━━━━━━━\n"+
 					"💸 <b>+%s ብር</b> added to your <b>Play</b> wallet.\n\n"+
 					"🎯 Ready to win? Tap Play below and jump right in.\n\n"+
-					"<i>— Gojjam Bingo</i>",
+					"<i>— Sky Bingo</i>",
 				escapeHTML(amt),
 			)
 
@@ -3962,7 +3962,7 @@ func main() {
 			// Use Telegram's share URL format
 			shareURL := fmt.Sprintf("https://t.me/share/url?url=%s&text=%s",
 				url.QueryEscape(deepLink),
-				url.QueryEscape("Join me on Gojjam Bingo! 🎮"))
+				url.QueryEscape("Join me on Sky Bingo! 🎮"))
 			// እንዴት እንደሚሰራ፡-
 			// 🔄እያንዳንዱ የጋበዝከው ሰው Deposit ባደረገ ቁጥር 10 ብር ያገኛሉ!
 
@@ -4785,7 +4785,7 @@ func main() {
 			fmt.Fprintf(receipt, "🆔 Transaction ID: %s\n", escapeHTML(txnID))
 			fmt.Fprintf(receipt, "📅 Date: %s\n", escapeHTML(ts))
 			fmt.Fprintf(receipt, "💳 New Balance: %s ብር\n\n", escapeHTML(playBal))
-			receipt.WriteString("Thank you for using Gojjam Bingo! 🎉")
+			receipt.WriteString("Thank you for using Sky Bingo! 🎉")
 
 			userMsg := tgbotapi.NewMessage(chatID, receipt.String())
 			userMsg.ParseMode = "HTML"
@@ -5015,7 +5015,7 @@ func main() {
 			fmt.Fprintf(receipt, "🆔 Transaction ID: %s\n", escapeHTML(txnID))
 			fmt.Fprintf(receipt, "📅 Date: %s\n", escapeHTML(ts))
 			fmt.Fprintf(receipt, "💳 New Balance: %s ብር\n\n", escapeHTML(playBal))
-			receipt.WriteString("Thank you for using Gojjam Bingo! 🎉")
+			receipt.WriteString("Thank you for using Sky Bingo! 🎉")
 
 			userMsg := tgbotapi.NewMessage(chatID, receipt.String())
 			userMsg.ParseMode = "HTML"
@@ -5239,7 +5239,7 @@ func main() {
 			fmt.Fprintf(receipt, "🆔 Transaction ID: %s\n", escapeHTML(txnID))
 			fmt.Fprintf(receipt, "📅 Date: %s\n", escapeHTML(ts))
 			fmt.Fprintf(receipt, "💳 New Balance: %s ብር\n\n", escapeHTML(playBal))
-			receipt.WriteString("Thank you for using Gojjam Bingo! 🎉")
+			receipt.WriteString("Thank you for using Sky Bingo! 🎉")
 
 			userMsg := tgbotapi.NewMessage(chatID, receipt.String())
 			userMsg.ParseMode = "HTML"
@@ -5391,7 +5391,7 @@ func parseReceiptPage(rawURL string) (*TelebirrReceipt, error) {
 /* ====================== UI ======================== */
 func handleStart(bot *tgbotapi.BotAPI, chatID int64) error {
 	// Example: whatever you currently do in your /start handler
-	msg := tgbotapi.NewMessage(chatID, "Welcome To Gojjam Bingo! 🎉")
+	msg := tgbotapi.NewMessage(chatID, "Welcome To Sky Bingo! 🎉")
 	_, err := bot.Send(msg)
 	return err
 }

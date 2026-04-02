@@ -168,6 +168,7 @@ var (
 	// Allow-listed receipt hosts
 	ReceiptAllowedHost = "transactioninfo.ethiotelecom.et"
 	CBEAllowedHost     = "apps.cbe.com.et"
+	CBENewAllowedHost  = "mbreciept.cbe.com.et"
 	BOAAllowedHost     = "cs.bankofabyssinia.com"
 	EBirrAllowedHost   = "transactioninfo.ebirr.com" // NEW
 
@@ -181,6 +182,9 @@ var (
 	AllowedCBEBirrReceiverName  = getenvDefault("ALLOWED_RECEIVER_CBE", "BITEW ENAWGAW ABEBE")
 	AllowedBOAReceiverName      = getenvDefault("ALLOWED_RECEIVER_BOA", "HENOK BELAY MANDEFRO")
 	AllowedEBirrReceiverName    = getenvDefault("ALLOWED_RECEIVER_EBIRR", "Henok Belay Mandafro")
+	CBEMobileAPIBase            = getenvDefault("CBE_MOBILE_API_BASE", "https://mb.cbe.com.et")
+	CBEMobileAppID              = getenvDefault("CBE_MOBILE_APP_ID", "d1292e42-7400-49de-a2d3-9731caa4c819")
+	CBEMobileAppVersion         = getenvDefault("CBE_MOBILE_APP_VERSION", "0a01980b-9859-1369-8198-59f403820000")
 	// NEW: referral bonus amount used for the notifier message
 	ReferralBonusBirr = getenvDefault("REFERRAL_BONUS_BIRR", "5")
 	// In the config section, add this line
@@ -213,11 +217,16 @@ func methodFromReceiptURL(raw string) string {
 		return "ebirr"
 	case strings.ToLower(ReceiptAllowedHost):
 		return "telebirr"
-	case strings.ToLower(CBEAllowedHost):
+	case strings.ToLower(CBEAllowedHost), strings.ToLower(CBENewAllowedHost):
 		return "cbe"
 	default:
 		return ""
 	}
+}
+
+func isAllowedCBEHost(hostname string) bool {
+	h := strings.ToLower(strings.TrimSpace(hostname))
+	return h == strings.ToLower(CBEAllowedHost) || h == strings.ToLower(CBENewAllowedHost)
 }
 func jsonDebug(v any) string {
 	b, _ := json.MarshalIndent(v, "", "  ")
@@ -684,16 +693,14 @@ func isUnknownAuthorityErr(err error) bool {
 		strings.Contains(msg, "certificate verify failed")
 }
 
-// *** GUARANTEE insecure retry for CBE host (no env required) ***
 func cbeAllowInsecureForHost(rawURL string) bool {
 	u, err := url.Parse(rawURL)
 	if err != nil {
 		return false
 	}
 	h := strings.ToLower(u.Host)
-	return h == "apps.cbe.com.et" || h == "apps.cbe.com.et:100"
+	return h == "apps.cbe.com.et" || h == "apps.cbe.com.et:100" || h == "mbreciept.cbe.com.et"
 }
-
 // Optional: still allow a global switch too (CBE_ALLOW_INSECURE=1)
 func cbeAllowInsecureEnv() bool { return os.Getenv("CBE_ALLOW_INSECURE") == "1" }
 
@@ -2082,9 +2089,8 @@ func isAllowedCBEURL(raw string) bool {
 	if err != nil {
 		return false
 	}
-	return strings.ToLower(u.Hostname()) == CBEAllowedHost
+	return isAllowedCBEHost(u.Hostname())
 }
-
 func httpGetHTML(ctx context.Context, rawURL string) (*goquery.Document, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
@@ -2249,9 +2255,8 @@ func findLabelValuePair(doc *goquery.Document, label string) string {
 }
 
 /* ========== NEW: CBE receipt parsing (HTML) ========== */
-
 var (
-	reCBELink = regexp.MustCompile(`(?i)\bhttps?://apps\.cbe\.com\.et(?::\d+)?/\S+`)
+	reCBELink = regexp.MustCompile(`(?i)\bhttps?://(?:apps|mbreciept)\.cbe\.com\.et(?::\d+)?/\S+`)
 	reFTID    = regexp.MustCompile(`\bFT[A-Z0-9]+\b`)
 )
 
@@ -2525,6 +2530,25 @@ func parseCBEReceipt(rawURL string) (*CBEReceipt, error) {
 			r.TransferredAmount = normalizeBirrAmount(r.TransferredAmount)
 		}
 	}
+		// Fallback for the new CBE viewer host (Nuxt page shells, data loaded via API).
+	// If core fields are still missing, query the public transaction-detail endpoint.
+	if (r.TxID == "" || r.TransferredAmount == "" || r.ReceiverName == "") && isMBReceiptHost(rawURL) {
+		if fb, ferr := parseCBEMobileReceipt(rawURL); ferr == nil && fb != nil {
+			r.TxID = firstNonEmpty(r.TxID, fb.TxID)
+			r.TransferredAmount = firstNonEmpty(r.TransferredAmount, fb.TransferredAmount)
+			r.ReceiverName = firstNonEmpty(r.ReceiverName, fb.ReceiverName)
+			r.PayerName = firstNonEmpty(r.PayerName, fb.PayerName)
+			r.PayerAccount = firstNonEmpty(r.PayerAccount, fb.PayerAccount)
+			r.ReceiverAccount = firstNonEmpty(r.ReceiverAccount, fb.ReceiverAccount)
+			r.PaymentDate = firstNonEmpty(r.PaymentDate, fb.PaymentDate)
+			r.Reason = firstNonEmpty(r.Reason, fb.Reason)
+			r.Commission = firstNonEmpty(r.Commission, fb.Commission)
+			r.VAT = firstNonEmpty(r.VAT, fb.VAT)
+			r.TotalDebited = firstNonEmpty(r.TotalDebited, fb.TotalDebited)
+		} else if ferr != nil {
+			log.Printf("CBE mobile fallback parse failed: %v", ferr)
+		}
+	}
 	log.Printf("Parsed CBE receipt data (pre-validation): %v", r)
 
 	// Fallback: read ?id=FT... from URL if TxID still empty
@@ -2570,7 +2594,108 @@ func parseCBEReceipt(rawURL string) (*CBEReceipt, error) {
 	sanitizeCBEReceipt(r)
 	return r, nil
 }
+func isMBReceiptHost(rawURL string) bool {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return false
+	}
+	return strings.EqualFold(strings.TrimSpace(u.Hostname()), CBENewAllowedHost)
+}
 
+func cbeMobileReceiptID(rawURL string) string {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return ""
+	}
+	id := strings.Trim(strings.TrimSpace(u.Path), "/")
+	if id == "" {
+		return ""
+	}
+	return id
+}
+
+type cbeMobileTxnResp struct {
+	ID                        string   `json:"id"`
+	DebitAmount               string   `json:"debitAmount"`
+	AmountCredited            string   `json:"amountCredited"`
+	AmountCreditedWithCurrency string  `json:"amountCreditedWithCurrency"`
+	AmountDebited             string   `json:"amountDebited"`
+	AmountDebitedWithCurrency string   `json:"amountDebitedWithCurrency"`
+	TotalChargeAmount         string   `json:"totalChargeAmount"`
+	TotalTaxAmount            string   `json:"totalTaxAmount"`
+	CreditAccountNo           string   `json:"creditAccountNo"`
+	DebitAccountNo            string   `json:"debitAccountNo"`
+	CreditAccountHolder       string   `json:"creditAccountHolder"`
+	DebitAccountHolder        string   `json:"debitAccountHolder"`
+	DateTimes                 []string `json:"dateTimes"`
+	PaymentDetails            []string `json:"paymentDetails"`
+}
+
+func parseCBEMobileReceipt(rawURL string) (*CBEReceipt, error) {
+	id := cbeMobileReceiptID(rawURL)
+	if id == "" {
+		return nil, fmt.Errorf("missing mobile receipt id in URL")
+	}
+
+	base := strings.TrimRight(CBEMobileAPIBase, "/")
+	detailURL := fmt.Sprintf("%s/api/v1/transactions/public/transaction-detail/%s", base, url.PathEscape(id))
+
+	req, err := http.NewRequest(http.MethodGet, detailURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("User-Agent", UserAgent)
+	req.Header.Set("X-App-ID", CBEMobileAppID)
+	req.Header.Set("X-App-Version", CBEMobileAppVersion)
+
+	client := newCBEHTTPClient(CBEHTTPTimeout, false)
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
+		return nil, fmt.Errorf("mobile detail api %s: %s", resp.Status, strings.TrimSpace(string(body)))
+	}
+
+	var out cbeMobileTxnResp
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, err
+	}
+
+	r := &CBEReceipt{
+		Source:          "cbe",
+		Link:            rawURL,
+		TxID:            strings.ToUpper(firstNonEmpty(out.ID, extractFTID(id))),
+		PayerName:       out.DebitAccountHolder,
+		PayerAccount:    out.DebitAccountNo,
+		ReceiverName:    out.CreditAccountHolder,
+		ReceiverAccount: out.CreditAccountNo,
+		TransferredAmount: firstNonEmpty(
+			out.AmountCredited,
+			out.DebitAmount,
+			out.AmountCreditedWithCurrency,
+		),
+		Commission:   out.TotalChargeAmount,
+		VAT:          out.TotalTaxAmount,
+		TotalDebited: firstNonEmpty(out.AmountDebited, out.AmountDebitedWithCurrency),
+	}
+	if len(out.PaymentDetails) > 0 {
+		r.Reason = strings.TrimSpace(strings.Join(out.PaymentDetails, " "))
+	}
+	if len(out.DateTimes) > 0 {
+		dt := strings.TrimSpace(out.DateTimes[0])
+		if t, err := time.Parse(time.RFC3339, dt); err == nil {
+			r.PaymentDate = t.Format("2006/01/02 15:04:05")
+		} else {
+			r.PaymentDate = strings.ReplaceAll(strings.TrimSuffix(dt, "Z"), "T", " ")
+		}
+	}
+	sanitizeCBEReceipt(r)
+	return r, nil
+}
 /* ===================== Name & time helpers ===================== */
 
 func firstNonEmpty(ss ...string) string {
@@ -3997,7 +4122,7 @@ func main() {
 			bot.Send(tgbotapi.NewMessage(chatID, "Pick a stake → choose a board → select numbers."))
 			continue
 		case "☎️ Contact Us":
-			bot.Send(tgbotapi.NewMessage(chatID, "Support: 0913531747"))
+			bot.Send(tgbotapi.NewMessage(chatID, "Support:  @skybingosupport"))
 			continue
 		case "👥 Join Us":
 			bot.Send(tgbotapi.NewMessage(chatID, "Join our channel: "))
@@ -5131,7 +5256,13 @@ func main() {
 			totalStr := fmt.Sprintf("%.2f", float64(totalCents)/100)
 
 			// reference: namespaced by host
-			ref := strings.ToLower(CBEAllowedHost) + ":" + txid
+			// ref := strings.ToLower(CBEAllowedHost) + ":" + txid
+			// reference: namespaced by receipt host
+			refHost := strings.ToLower(CBEAllowedHost)
+			if u, err := url.Parse(link); err == nil && strings.TrimSpace(u.Hostname()) != "" {
+				refHost = strings.ToLower(u.Hostname())
+			}
+			ref := refHost + ":" + txid
 
 			if alreadyProcessed(txid, ref) {
 				msg := fmt.Sprintf(

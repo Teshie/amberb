@@ -169,19 +169,19 @@ func desiredBotCount(roomID string, now time.Time) int {
 
 	switch {
 	case totalMin >= 5*60 && totalMin < 6*60:
-		base = triple{170, 0, 0}
+		base = triple{210, 0, 0}
 
 	case totalMin >= 6*60 && totalMin < 12*60: // 06:00–12:00
-		base = triple{170, 0, 0}
+		base = triple{210, 0, 0}
 
 	case totalMin >= 12*60 && totalMin < 15*60: // 12:00–15:00
-		base = triple{170, 0, 0}
+		base = triple{210, 0, 0}
 
 	case totalMin >= 15*60 && totalMin < 17*60: // 15:00–17:00
-		base = triple{170, 0, 0}
+		base = triple{210, 0, 0}
 
 	case totalMin >= 17*60 && totalMin < (23*60+30): // 17:00–23:30 → evening peak of
-		base = triple{170, 0, 0}
+		base = triple{210, 0, 0}
 
 	case totalMin >= (23*60+30) && totalMin < (24*60+30): // 23:30–00:30 → decline phase
 		minutesFrom2330 := totalMin - (23*60 + 30)

@@ -27,7 +27,7 @@ Behavior (coordinated + resilient + time-aware):
 - Off-duty bots just sleep and don’t connect.
 - Bots on duty:
   - Join rooms with jitter.
-  - Stagger board selection via per-room wave schedule (bots per wave + spacing between waves).
+  - Stagger board selection via per-room slot schedule (slot index × SlotSpacing + jitter).
   - After committing a board, they try to start the game (no captain).
   - During play, they track called numbers and claim with human-ish delay + miss chance.
 */
@@ -81,14 +81,11 @@ type botConfig struct {
 
 	JoinJitter time.Duration
 
-	// Selection staggering: Plan A — SlotSpacing is the gap between *waves*; SelectWaveSize
-	// bots share a wave with IntraWaveSpacing between them (reduces tail latency vs linear slotIdx*spacing).
-	SlotSpacing      time.Duration
-	SelectWaveSize   int
-	IntraWaveSpacing time.Duration
-	SelectDelayMin   time.Duration
-	SelectDelayMax   time.Duration
-	SmallJitterMax   time.Duration
+	// Selection staggering and human-ish jitter
+	SlotSpacing    time.Duration
+	SelectDelayMin time.Duration
+	SelectDelayMax time.Duration
+	SmallJitterMax time.Duration
 
 	// Quick retry window after a selection conflict
 	RetryWithinAfterSelect time.Duration
@@ -112,16 +109,14 @@ func newBotConfig() botConfig {
 	return botConfig{
 		WSBase:  "",  // will be filled from conf.json
 		Rooms:   nil, // will be filled from conf.json
-		PerRoom: 0,   // unused with
+		PerRoom: 0,   // unused with JSON plan
 
 		JoinJitter: 1500 * time.Millisecond, // [750ms .. 1500ms] initial join jitter
 
-		SlotSpacing:      180 * time.Millisecond, // between waves (not between every bot)
-		SelectWaveSize:   6,                      // bots per wave
-		IntraWaveSpacing: 20 * time.Millisecond,  // micro-stagger inside a wave (easier on WS fan-out)
-		SelectDelayMin:   0,
-		SelectDelayMax:   0,
-		SmallJitterMax:   120 * time.Millisecond,
+		SlotSpacing:    180 * time.Millisecond,
+		SelectDelayMin: 0,
+		SelectDelayMax: 0,
+		SmallJitterMax: 120 * time.Millisecond,
 
 		RetryWithinAfterSelect: 5 * time.Second, // Extended from 2s for more retry opportunities
 
@@ -136,22 +131,6 @@ func newBotConfig() botConfig {
 
 		StartJitterMax: 2 * time.Second,
 	}
-}
-
-// selectScheduleOffset is pick delay after schedule base: wave = slotIdx / waveSize,
-// then wave*SlotSpacing + pos*IntraWaveSpacing (see Plan A batching).
-func selectScheduleOffset(slotIdx int, cfg botConfig) time.Duration {
-	waveSize := cfg.SelectWaveSize
-	if waveSize < 1 {
-		waveSize = 1
-	}
-	wave := slotIdx / waveSize
-	pos := slotIdx % waveSize
-	intra := cfg.IntraWaveSpacing
-	if intra < 0 {
-		intra = 0
-	}
-	return time.Duration(wave)*cfg.SlotSpacing + time.Duration(pos)*intra
 }
 
 func atoiDefault(s string, def int) int {
@@ -725,7 +704,7 @@ func botSession(ctx context.Context, cfg botConfig, roomID string, tid int64, sl
 					if st.roundBase.IsZero() || base.After(st.roundBase.Add(1*time.Second)) || base.Before(st.roundBase.Add(-1*time.Second)) {
 						st.roundBase = base
 
-						slotTime := base.Add(selectScheduleOffset(slotIdx, cfg))
+						slotTime := base.Add(time.Duration(slotIdx) * cfg.SlotSpacing)
 						if cfg.SmallJitterMax > 0 {
 							slotTime = slotTime.Add(randBetween(0, cfg.SmallJitterMax))
 						}

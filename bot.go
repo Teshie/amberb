@@ -112,7 +112,7 @@ func newBotConfig() botConfig {
 	return botConfig{
 		WSBase:  "",  // will be filled from conf.json
 		Rooms:   nil, // will be filled from conf.json
-		PerRoom: 0,   // unused with JSON plan
+		PerRoom: 0,   // unused with
 
 		JoinJitter: 1500 * time.Millisecond, // [750ms .. 1500ms] initial join jitter
 

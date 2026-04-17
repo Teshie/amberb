@@ -114,10 +114,10 @@ func newBotConfig() botConfig {
 
 		JoinJitter: 1500 * time.Millisecond, // [750ms .. 1500ms] initial join jitter
 
-		SlotSpacing:    80 * time.Millisecond,  // Reduced from 250ms - allows 150 bots in ~12 seconds
+		SlotSpacing:    180 * time.Millisecond,  // Reduced from 250ms - allows 150 bots in ~12 seconds
 		SelectDelayMin: 0,
 		SelectDelayMax: 0,
-		SmallJitterMax: 100 * time.Millisecond, // Reduced from 200ms
+		SmallJitterMax: 120 * time.Millisecond, // Reduced from 200ms
 
 		RetryWithinAfterSelect: 5 * time.Second, // Extended from 2s for more retry opportunities
 
@@ -169,26 +169,26 @@ func desiredBotCount(roomID string, now time.Time) int {
 
 	switch {
 	case totalMin >= 5*60 && totalMin < 6*60:
-		base = triple{210, 0, 0}
+		base = triple{70, 57, 54}
 
 	case totalMin >= 6*60 && totalMin < 12*60: // 06:00–12:00
-		base = triple{210, 0, 0}
+		base = triple{173, 120, 110}
 
 	case totalMin >= 12*60 && totalMin < 15*60: // 12:00–15:00
-		base = triple{210, 0, 0}
+		base = triple{173, 120, 100}
 
 	case totalMin >= 15*60 && totalMin < 17*60: // 15:00–17:00
-		base = triple{210, 0, 0}
+		base = triple{173, 120, 100}
 
 	case totalMin >= 17*60 && totalMin < (23*60+30): // 17:00–23:30 → evening peak of
-		base = triple{210, 0, 0}
+		base = triple{173, 120, 100}
 
 	case totalMin >= (23*60+30) && totalMin < (24*60+30): // 23:30–00:30 → decline phase
 		minutesFrom2330 := totalMin - (23*60 + 30)
 		totalWindow := (24*60 + 30) - (23*60 + 30) // 60 minutes
 
 		if totalWindow <= 0 {
-			base = triple{100, 0, 0}
+			base = triple{100, 70, 60}
 			break
 		}
 

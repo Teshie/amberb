@@ -588,17 +588,8 @@ func (r *roomLive) setBoardFor(tid int64, board int) (bool, string) {
 }
 
 func (r *roomLive) clearBoardFor(tid int64) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	// NO REFUNDS - user keeps the deduction even if they leave
-
-	for b, owner := range r.selected {
-		if owner == tid {
-			delete(r.selected, b)
-		}
-	}
-	r.recomputePossibleWinLocked()
+	r.clearBoard1For(tid)
+	r.clearBoard2For(tid)
 }
 
 func (r *roomLive) addPlayer(tid int64) {
@@ -1010,47 +1001,106 @@ func (r *roomLive) setBoardSlotFor(tid int64, board int, slot int) (bool, string
 	return true, ""
 }
 
-// Clear slot #1 (no refunds)
-func (r *roomLive) clearBoard1For(tid int64) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	tb := r.ownerBoards[tid]
-	if tb.B1 != nil {
-		delete(r.selected, *tb.B1)
-		tb.B1 = nil
-		r.ownerBoards[tid] = tb
-	}
-	r.recomputePossibleWinLocked()
+// stakeRefundableBeforeRound matches leave: only before the round is live or payout-settled.
+func stakeRefundableBeforeRound(status string) bool {
+	return status != "playing" && status != "claimed"
 }
 
-// Clear slot #2 (no refunds)
-func (r *roomLive) clearBoard2For(tid int64) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	tb := r.ownerBoards[tid]
-	if tb.B2 != nil {
-		delete(r.selected, *tb.B2)
-		tb.B2 = nil
-		r.ownerBoards[tid] = tb
+// clearBoardSlotFor removes a slot's board. Before playing/claimed, refunds one stake and
+// decrements debited so the user is not charged again when picking a different board for that slot.
+func (r *roomLive) clearBoardSlotFor(tid int64, slot int) {
+	if slot != 1 && slot != 2 {
+		return
 	}
-	r.recomputePossibleWinLocked()
-}
 
-// Clear both slots for a user (used on leave)
-func (r *roomLive) clearBoardsFor(tid int64) {
 	r.mu.Lock()
-	defer r.mu.Unlock()
-	tb := r.ownerBoards[tid]
-	if tb.B1 != nil {
-		delete(r.selected, *tb.B1)
-		tb.B1 = nil
+	if r.Status == "playing" || r.Status == "claimed" {
+		r.mu.Unlock()
+		return
 	}
-	if tb.B2 != nil {
-		delete(r.selected, *tb.B2)
+
+	tb := r.ownerBoards[tid]
+	var prev *int
+	if slot == 1 {
+		prev = tb.B1
+	} else {
+		prev = tb.B2
+	}
+	if prev == nil {
+		r.mu.Unlock()
+		return
+	}
+
+	boardNum := *prev
+	roomID := r.RoomID
+	stakeC := r.StakeAmount * 100
+	prevDebited := r.debited[tid]
+	doRefund := prevDebited > 0 && stakeRefundableBeforeRound(r.Status)
+
+	delete(r.selected, boardNum)
+	if slot == 1 {
+		tb.B1 = nil
+	} else {
 		tb.B2 = nil
 	}
 	r.ownerBoards[tid] = tb
+
+	if doRefund {
+		r.debited[tid] = prevDebited - 1
+		if r.debited[tid] < 0 {
+			r.debited[tid] = 0
+		}
+		if r.debited[tid] == 0 {
+			delete(r.debited, tid)
+		}
+	}
+
 	r.recomputePossibleWinLocked()
+	r.mu.Unlock()
+
+	if !doRefund || stakeC <= 0 {
+		return
+	}
+
+	if err := refundStakeCents(tid, stakeC, roomID, 1); err != nil {
+		log.Printf("clearBoard slot %d refund failed tid=%d room=%s: %v (rollback if possible)", slot, tid, roomID, err)
+		r.mu.Lock()
+		if _, taken := r.selected[boardNum]; !taken {
+			tb2 := r.ownerBoards[tid]
+			bCopy := boardNum
+			restored := false
+			if slot == 1 && tb2.B1 == nil {
+				tb2.B1 = &bCopy
+				restored = true
+			} else if slot == 2 && tb2.B2 == nil {
+				tb2.B2 = &bCopy
+				restored = true
+			}
+			if restored {
+				r.selected[boardNum] = tid
+				r.ownerBoards[tid] = tb2
+				r.debited[tid] = prevDebited
+				r.recomputePossibleWinLocked()
+			}
+		}
+		r.mu.Unlock()
+	}
+}
+
+// Clear slot #1
+func (r *roomLive) clearBoard1For(tid int64) {
+	r.clearBoardSlotFor(tid, 1)
+}
+
+// Clear slot #2
+func (r *roomLive) clearBoard2For(tid int64) {
+	r.clearBoardSlotFor(tid, 2)
+}
+
+// Clear both slots for a user (refunds each occupied slot before round, like leave)
+func (r *roomLive) clearBoardsFor(tid int64) {
+	r.clearBoard1For(tid)
+	r.clearBoard2For(tid)
 }
 
 // Slot-specific wrappers (PUBLIC)

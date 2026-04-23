@@ -1,5 +1,5 @@
 {
-    "ws_base": "wss://henb.teshie.dev",
+    "ws_base": "wss://amberb.teshie.dev",
     "rooms": [
         {
             "id": "10",

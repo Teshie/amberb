@@ -27,7 +27,7 @@ Behavior (coordinated + resilient + time-aware):
 - Off-duty bots just sleep and don’t connect.
 - Bots on duty:
   - Join rooms with jitter.
-  - Stagger board selection via per-room slot schedule (slot index × SlotSpacing + jitter).
+  - Stagger board selection via per-room slot schedule.
   - After committing a board, they try to start the game (no captain).
   - During play, they track called numbers and claim with human-ish delay + miss chance.
 */
@@ -105,6 +105,7 @@ type botConfig struct {
 	StartJitterMax time.Duration
 }
 
+
 func newBotConfig() botConfig {
 	return botConfig{
 		WSBase:  "",  // will be filled from conf.json
@@ -113,10 +114,10 @@ func newBotConfig() botConfig {
 
 		JoinJitter: 1500 * time.Millisecond, // [750ms .. 1500ms] initial join jitter
 
-		SlotSpacing:    180 * time.Millisecond,
+		SlotSpacing:    180 * time.Millisecond,  // Reduced from 250ms - allows 150 bots in ~12 seconds
 		SelectDelayMin: 0,
 		SelectDelayMax: 0,
-		SmallJitterMax: 120 * time.Millisecond,
+		SmallJitterMax: 120 * time.Millisecond, // Reduced from 200ms
 
 		RetryWithinAfterSelect: 5 * time.Second, // Extended from 2s for more retry opportunities
 
@@ -168,26 +169,26 @@ func desiredBotCount(roomID string, now time.Time) int {
 
 	switch {
 	case totalMin >= 5*60 && totalMin < 6*60:
-		base = triple{70, 0, 0}
+		base = triple{70, 57, 54}
 
 	case totalMin >= 6*60 && totalMin < 12*60: // 06:00–12:00
-		base = triple{173, 0, 0}
+		base = triple{173, 120, 110}
 
 	case totalMin >= 12*60 && totalMin < 15*60: // 12:00–15:00
-		base = triple{173, 0, 0}
+		base = triple{173, 120, 100}
 
 	case totalMin >= 15*60 && totalMin < 17*60: // 15:00–17:00
-		base = triple{173, 0, 0}
+		base = triple{173, 120, 100}
 
 	case totalMin >= 17*60 && totalMin < (23*60+30): // 17:00–23:30 → evening peak of
-		base = triple{173, 0, 0}
+		base = triple{173, 120, 100}
 
 	case totalMin >= (23*60+30) && totalMin < (24*60+30): // 23:30–00:30 → decline phase
 		minutesFrom2330 := totalMin - (23*60 + 30)
 		totalWindow := (24*60 + 30) - (23*60 + 30) // 60 minutes
 
 		if totalWindow <= 0 {
-			base = triple{100, 0, 0}
+			base = triple{100, 70, 60}
 			break
 		}
 
@@ -197,7 +198,7 @@ func desiredBotCount(roomID string, now time.Time) int {
 			frac = 0
 		}
 
-		peak := triple{100, 0, 0} // your chosen late-night peak
+		peak := triple{100, 90, 60} // your chosen late-night peak
 		base = triple{
 			int(frac * float64(peak.r10)),
 			int(frac * float64(peak.r20)),
@@ -237,9 +238,9 @@ func botOnDuty(roomID string, slotIdx int, now time.Time) bool {
 
 // Per-room random variance that changes every minute
 var (
-	varianceMu   sync.Mutex
-	roomVariance = map[string]int{}
-	varianceTime = map[string]int64{} // minute timestamp when variance was set
+	varianceMu    sync.Mutex
+	roomVariance  = map[string]int{}
+	varianceTime  = map[string]int64{} // minute timestamp when variance was set
 )
 
 // getRoomVariance returns a random variance (0-20) for the room, refreshed every minute
@@ -763,7 +764,7 @@ func botSession(ctx context.Context, cfg botConfig, roomID string, tid int64, sl
 						}
 						log.Printf("[bot %d room=%s] claiming bingo (forced check)", tid, roomID)
 						_ = send(map[string]any{
-							"action":     "claim",
+							"action":    "claim",
 							"request_id": uuid4(),
 						})
 					})

@@ -1111,6 +1111,33 @@ func createPerformanceIndexes() error {
 		`CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_room_players_room_tid ON room_players(room_id, telegram_id)`,
 		// Index for users by telegram_id (if not already covered by unique constraint)
 		`CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_users_telegram_id ON users(telegram_id)`,
+
+		// --- Group C indexing polish ---
+
+		// Bot loader hot path: SELECT ... FROM users WHERE is_bot = true.
+		// A partial index on the rare "true" rows keeps the index tiny and
+		// makes the bot fetch O(bot_count) instead of a full users scan.
+		`CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_users_is_bot_true ON users(telegram_id) WHERE is_bot = TRUE`,
+
+		// Wallet history endpoint: WHERE telegram_id = ? ORDER BY id DESC LIMIT N.
+		// Compound (telegram_id, id DESC) lets Postgres serve the page directly
+		// from the index without a sort step.
+		`CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_transactions_tid_id_desc ON transactions(telegram_id, id DESC)`,
+
+		// Admin dashboards filter by type+status within a day window and sort
+		// by created_at — give them an index that covers all three.
+		`CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_transactions_type_status_created ON transactions(type, status, created_at DESC)`,
+
+		// Pending withdrawals / deposits review: status alone is also a common
+		// filter in admin pages; partial index keeps it small (only "pending").
+		`CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_transactions_pending ON transactions(created_at DESC) WHERE status = 'pending'`,
+
+		// Lobby / admin sometimes filter rooms by status.
+		`CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_rooms_status ON rooms(status)`,
+
+		// Referrals lookup by inviter — already has a (non-unique) index from
+		// the model, but keep it explicit for parity with the rest.
+		`CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_referrals_inviter_tid ON referrals(inviter_tid)`,
 	}
 
 	for _, idx := range indexes {

@@ -653,6 +653,69 @@ func (r *roomLive) removePlayer(tid int64) {
 	r.mu.Unlock()
 }
 
+// softRemovePlayer is called when a WS connection closes (page refresh,
+// transient network drop, etc.). It is NOT a "leave" — the user may reconnect
+// at any moment. Therefore, if the user holds any reserved board or paid stake,
+// we keep all of their state (boards, debits, players entry, DB row) intact so
+// they re-enter the room with their selections fully restored.
+//
+// Only when the user has zero stake is it safe to drop them from the in-memory
+// players set, and (just like removePlayer) reset the room to idle if the
+// players map becomes empty.
+//
+// Importantly: this function NEVER touches the room_players DB row — that row
+// is the single source of truth for "this user reserved this board" and must
+// survive WS disconnects so refresh-during-board-selection-or-calling works.
+func (r *roomLive) softRemovePlayer(tid int64) {
+	r.mu.Lock()
+	tb := r.ownerBoards[tid]
+	hasStake := r.debited[tid] > 0 || tb.B1 != nil || tb.B2 != nil
+
+	// While a round is live or being claimed, never drop the player from
+	// in-memory state — they must be able to reconnect and continue.
+	if hasStake || r.Status == "playing" || r.Status == "claimed" {
+		r.mu.Unlock()
+		return
+	}
+
+	delete(r.players, tid)
+
+	// If no players remain, fully reset the room to idle (mirrors removePlayer).
+	if len(r.players) == 0 {
+		r.Status = "Ready"
+		r.StartTime = nil
+		r.StartedAt = nil
+		r.stopCountdownLocked()
+		r.stopCallingLocked()
+		r.selected = make(map[int]int64)
+		r.ownerBoards = make(map[int64]twoBoards)
+		r.debited = make(map[int64]int)
+		r.PossibleWinCents = 0
+		r.roundPayoutCents = 0
+		r.called = r.called[:0]
+		r.callSeq = nil
+		r.callIdx = 0
+		if r.claimTimer != nil {
+			r.claimTimer.Stop()
+			r.claimTimer = nil
+		}
+		r.claimOpen = false
+		r.claimUntil = time.Time{}
+		r.claimants = make(map[int64]claimant)
+		r.mu.Unlock()
+		return
+	}
+
+	// If the room was about to start but threshold is no longer met, revert.
+	if r.Status == "about_to_start" && !r.eligibleToStartLocked() {
+		r.Status = "pending"
+		r.StartTime = nil
+		r.StartedAt = nil
+		r.stopCountdownLocked()
+	}
+	r.mu.Unlock()
+}
+
 /* ============================================================
    Start/Countdown helpers
 ============================================================ */
@@ -2654,11 +2717,12 @@ func wsRoomHandler(c *gin.Context) {
 	rc.readPump()
 
 	rm.unregisterConn(rc)
-	rm.removePlayer(tid)
-	// Queue disconnect cleanup asynchronously - not blocking
-	queueAsyncWrite(func() {
-		_ = upsertRoomPlayerWithTwo(rm.RoomID, tid, nil, nil)
-	})
+	// IMPORTANT: a WS close is NOT a "leave". If the user has a reserved board
+	// or has paid stake, keep their state (boards, debits, DB row) intact so a
+	// page refresh / transient drop does not lose their reservation. Only
+	// `softRemovePlayer` runs here; the user's room_players DB row is
+	// deliberately left untouched and is the source of truth on reconnect.
+	rm.softRemovePlayer(tid)
 
 	saveRoomStateToDB(rm)
 	globalRoomsHub.broadcastRooms()

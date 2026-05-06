@@ -361,15 +361,29 @@ func startBots(ctx context.Context) {
 		log.Printf("[bots] %v", err)
 	}
 
-	// Fetch bot users
-	var bots []User
-	if err := db.Where("is_bot = ?", true).Limit(total).Find(&bots).Error; err != nil {
+	// Fetch bot users — only the columns we actually use. With 200+ bots this
+	// avoids dragging the wide User row (balances, names, etc.) over the wire.
+	type botRow struct {
+		TelegramID int64
+	}
+	var botRows []botRow
+	if err := db.Model(&User{}).
+		Select("telegram_id").
+		Where("is_bot = ?", true).
+		Limit(total).
+		Find(&botRows).Error; err != nil {
 		log.Printf("[bots] query error: %v", err)
 		return
 	}
-	if len(bots) == 0 {
+	if len(botRows) == 0 {
 		log.Println("[bots] no users with is_bot=true")
 		return
+	}
+	bots := make([]User, len(botRows))
+	for i, r := range botRows {
+		bots[i] = User{TelegramID: r.TelegramID, IsBot: true}
+		// Pre-warm the IsBot cache so the WS hot path never queries DB for these.
+		isBotCache.Store(r.TelegramID, true)
 	}
 
 	log.Printf("[bots] launching up to %d bots across %d rooms (time-based duty schedule, decentralized start)", total, len(rooms))
@@ -449,6 +463,19 @@ func makeJWT(tid int64) (string, error) {
 	return jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte(secret))
 }
 
+// botDialSem caps how many bot WS dials are in flight at once. Without this,
+// 200+ bots reconnecting at boot (or after a server restart) trigger
+// simultaneous TLS handshakes + HTTP upgrades, which can overwhelm the
+// listener side. Configurable via BOT_DIAL_CONCURRENCY (default 20).
+var botDialSem = make(chan struct{}, func() int {
+	if v := strings.TrimSpace(os.Getenv("BOT_DIAL_CONCURRENCY")); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 1024 {
+			return n
+		}
+	}
+	return 20
+}())
+
 // ---------------- Bot session ----------------
 
 func botSession(ctx context.Context, cfg botConfig, roomID string, tid int64, slotIdx int) error {
@@ -459,7 +486,17 @@ func botSession(ctx context.Context, cfg botConfig, roomID string, tid int64, sl
 
 	wsURL := strings.TrimRight(cfg.WSBase, "/") + "/ws/room/" + url.PathEscape(roomID) + "?token=" + url.QueryEscape(j)
 	dialer := websocket.Dialer{HandshakeTimeout: 6 * time.Second}
+
+	// Acquire a dial slot — at most BOT_DIAL_CONCURRENCY dials happen at once.
+	select {
+	case botDialSem <- struct{}{}:
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 	conn, _, err := dialer.Dial(wsURL, nil)
+	// Release the dial slot immediately after the upgrade completes (or fails) —
+	// we only cap concurrent *dials*, not concurrent open sessions.
+	<-botDialSem
 	if err != nil {
 		return fmt.Errorf("dial %s: %w", wsURL, err)
 	}

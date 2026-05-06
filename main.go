@@ -1073,13 +1073,29 @@ func initDB() {
 		log.Fatal("Failed to connect to database:", err)
 	}
 
-	// Configure connection pool for better concurrency
+	// Configure connection pool for better concurrency. Defaults sized for
+	// rooms with hundreds of bots; tunable via env without code change.
 	sqlDB, err := db.DB()
 	if err != nil {
 		log.Fatal("Failed to get underlying sql.DB:", err)
 	}
-	sqlDB.SetMaxOpenConns(50)                 // Increase max open connections
-	sqlDB.SetMaxIdleConns(25)                 // Keep connections ready
+	maxOpen := 100
+	maxIdle := 50
+	if v := os.Getenv("DB_MAX_OPEN_CONNS"); v != "" {
+		if n, e := strconv.Atoi(v); e == nil && n > 0 {
+			maxOpen = n
+		}
+	}
+	if v := os.Getenv("DB_MAX_IDLE_CONNS"); v != "" {
+		if n, e := strconv.Atoi(v); e == nil && n > 0 {
+			maxIdle = n
+		}
+	}
+	if maxIdle > maxOpen {
+		maxIdle = maxOpen
+	}
+	sqlDB.SetMaxOpenConns(maxOpen)
+	sqlDB.SetMaxIdleConns(maxIdle)
 	sqlDB.SetConnMaxLifetime(5 * time.Minute) // Recycle connections periodically
 
 	// Start bots (non-blocking)

@@ -104,6 +104,37 @@ var (
 	asyncWriteOnce  sync.Once
 )
 
+// ---------------- Broadcast coalescing ----------------
+//
+// With 200+ bots in a room, every bot's set_board used to trigger a full
+// per-room broadcast (DTO marshal + N writes) AND a full lobby broadcast.
+// Result: ~200 broadcasts × ~200 conns = ~40k JSON sends per round.
+//
+// Bingo state is a snapshot — only the latest matters. We coalesce calls so
+// at most one actual broadcast fires per room (and one for the lobby) per
+// `broadcastCoalesceWindow`. The DTO is computed at fire-time, so the
+// coalesced fire always carries the freshest state.
+var (
+	broadcastCoalesceWindow = func() time.Duration {
+		if v := getenvInt("BROADCAST_COALESCE_MS", 100); v > 0 {
+			return time.Duration(v) * time.Millisecond
+		}
+		return 100 * time.Millisecond
+	}()
+
+	roomBroadcastPending   = make(map[string]bool)
+	roomBroadcastPendingMu sync.Mutex
+
+	lobbyBroadcastPending   bool
+	lobbyBroadcastPendingMu sync.Mutex
+)
+
+// ---------------- IsBot cache ----------------
+//
+// users.is_bot never changes at runtime — we can cache it forever per tid.
+// Saves a DB round-trip on every hot-path is-this-a-bot check.
+var isBotCache sync.Map // map[int64]bool
+
 func startAsyncWriter() {
 	asyncWriteOnce.Do(func() {
 		go func() {
@@ -1870,11 +1901,18 @@ func (r *roomLive) TryClaim(tid int64, _ int, reqID, winnerFirstName string) map
 }
 
 func isBotUser(tid int64) bool {
+	// Hot path: in-memory cache (users.is_bot is immutable at runtime).
+	if v, ok := isBotCache.Load(tid); ok {
+		return v.(bool)
+	}
 	var u User
 	if err := db.Select("is_bot").Where("telegram_id = ?", tid).First(&u).Error; err != nil {
 		// If we can't read the user, assume human so we don't silence legit users.
+		// Negative result is intentionally NOT cached — a transient DB blip
+		// shouldn't permanently mislabel a user.
 		return false
 	}
+	isBotCache.Store(tid, u.IsBot)
 	return u.IsBot
 }
 
@@ -2162,26 +2200,67 @@ func clearAllBoardsInDB(roomID string) error {
 		}).Error
 }
 
+// broadcastRoomStateToConns is COALESCED. Multiple calls within
+// `broadcastCoalesceWindow` fire only one actual broadcast carrying the
+// freshest snapshot. This is the single biggest relief for the "bot brrrr"
+// burst: 200 bot set_board calls in a few hundred ms now produce ~1 fanout
+// instead of 200×N writes.
 func (r *roomLive) broadcastRoomStateToConns() {
-	conns := r.snapshotConns()
-	dto := r.toDTO()
-	for _, c := range conns {
-		boards := r.boardsFor(c.tid) // returns []int with slot1, slot2
+	roomBroadcastPendingMu.Lock()
+	if roomBroadcastPending[r.RoomID] {
+		roomBroadcastPendingMu.Unlock()
+		return
+	}
+	roomBroadcastPending[r.RoomID] = true
+	roomBroadcastPendingMu.Unlock()
+
+	time.AfterFunc(broadcastCoalesceWindow, func() {
+		roomBroadcastPendingMu.Lock()
+		delete(roomBroadcastPending, r.RoomID)
+		roomBroadcastPendingMu.Unlock()
+		r.doBroadcastRoomStateToConns()
+	})
+}
+
+// broadcastRoomStateToConnsNow forces an immediate fanout, bypassing the
+// coalescer. Use sparingly for moments where users need instant feedback
+// (winners, claim results). Does NOT clear a pending coalesced fire — that
+// will still run; it's fine to send twice in the rare overlap case.
+func (r *roomLive) broadcastRoomStateToConnsNow() {
+	r.doBroadcastRoomStateToConns()
+}
+
+// doBroadcastRoomStateToConns is the actual fanout. Snapshots conns AND
+// per-tid boards once under r.mu, then writes outside the lock — eliminates
+// the previous N×lock-reacquire in the broadcast loop.
+func (r *roomLive) doBroadcastRoomStateToConns() {
+	r.mu.Lock()
+	conns := make([]*roomConn, 0, len(r.conns))
+	tidBoards := make(map[int64][2]*int, len(r.conns))
+	for c := range r.conns {
+		conns = append(conns, c)
+		tb := r.ownerBoards[c.tid]
 		var b1, b2 *int
-		if len(boards) > 0 {
-			v := boards[0]
+		if tb.B1 != nil {
+			v := *tb.B1
 			b1 = &v
 		}
-		if len(boards) > 1 {
-			v2 := boards[1]
-			b2 = &v2
+		if tb.B2 != nil {
+			v := *tb.B2
+			b2 = &v
 		}
+		tidBoards[c.tid] = [2]*int{b1, b2}
+	}
+	r.mu.Unlock()
 
+	dto := r.toDTO()
+	for _, c := range conns {
+		bs := tidBoards[c.tid]
 		c.enqueueJSON(map[string]any{
 			"type":                "room_state",
 			"room":                dto,
-			"your_board_number":   b1,
-			"your_board_number_2": b2, // 👈 NEW
+			"your_board_number":   bs[0],
+			"your_board_number_2": bs[1],
 		})
 	}
 }
@@ -2211,7 +2290,28 @@ func (h *roomsHub) snapshot() []RoomStateDTO {
 	return out
 }
 
+// broadcastRooms is COALESCED — see broadcastRoomStateToConns. With many
+// rooms each driving lobby updates from bot activity, this prevents the
+// lobby fanout from being called hundreds of times per second.
 func (h *roomsHub) broadcastRooms() {
+	lobbyBroadcastPendingMu.Lock()
+	if lobbyBroadcastPending {
+		lobbyBroadcastPendingMu.Unlock()
+		return
+	}
+	lobbyBroadcastPending = true
+	lobbyBroadcastPendingMu.Unlock()
+
+	time.AfterFunc(broadcastCoalesceWindow, func() {
+		lobbyBroadcastPendingMu.Lock()
+		lobbyBroadcastPending = false
+		lobbyBroadcastPendingMu.Unlock()
+		h.doBroadcastRooms()
+	})
+}
+
+// doBroadcastRooms is the actual lobby fanout.
+func (h *roomsHub) doBroadcastRooms() {
 	payload, _ := json.Marshal(h.snapshot())
 	for c := range h.clients {
 		select {
@@ -2527,10 +2627,11 @@ func (c *roomsClient) readPump() {
 ============================================================ */
 
 type roomConn struct {
-	conn *websocket.Conn
-	tid  int64
-	room *roomLive
-	send chan []byte // buffered outbound queue
+	conn  *websocket.Conn
+	tid   int64
+	room  *roomLive
+	send  chan []byte // buffered outbound queue
+	isBot bool        // cached at connect; users.is_bot is immutable at runtime
 }
 
 func (rc *roomConn) enqueueJSON(v any) {
@@ -2682,7 +2783,7 @@ func wsRoomHandler(c *gin.Context) {
 	//   REMAINING ORIGINAL LOGIC (UNCHANGED)
 	// ==========================================================
 
-	rc := &roomConn{conn: conn, tid: tid, room: rm, send: make(chan []byte, RoomWSSendBuf)}
+	rc := &roomConn{conn: conn, tid: tid, room: rm, send: make(chan []byte, RoomWSSendBuf), isBot: isBotUser(tid)}
 
 	rm.registerConn(rc)
 	rm.addPlayer(tid)
@@ -2754,6 +2855,23 @@ func upsertRoomPlayerWithTwo(roomID string, tid int64, board1, board2 *int) erro
 		ON CONFLICT (room_id, telegram_id) 
 		DO UPDATE SET board_number = EXCLUDED.board_number, board_number2 = EXCLUDED.board_number2, updated_at = EXCLUDED.updated_at
 	`, roomID, tid, board1, board2, now, now, now).Error
+}
+
+// upsertRoomPlayerForConn is the variant used from the WS hot path: it runs
+// synchronously for humans (so a human's set_board confirmation is durable
+// before we ack) and asynchronously for bots (drains DB pressure when 200+
+// bots reserve boards in the same window). Bot in-memory state is already
+// committed under r.mu; the DB row only matters across restarts and is
+// reconciled at end-of-round anyway.
+func upsertRoomPlayerForConn(rc *roomConn, board1, board2 *int) {
+	if rc.isBot {
+		roomID, tid := rc.room.RoomID, rc.tid
+		queueAsyncWrite(func() {
+			_ = upsertRoomPlayerWithTwo(roomID, tid, board1, board2)
+		})
+		return
+	}
+	_ = upsertRoomPlayerWithTwo(rc.room.RoomID, rc.tid, board1, board2)
 }
 
 func (rc *roomConn) writePump() {
@@ -2840,7 +2958,7 @@ func (rc *roomConn) readPump() {
 				if len(bs) > 1 {
 					b2 = &bs[1]
 				}
-				_ = upsertRoomPlayerWithTwo(rc.room.RoomID, rc.tid, b1, b2)
+				upsertRoomPlayerForConn(rc, b1, b2)
 				saveRoomStateToDB(rc.room)
 				rc.room.broadcastRoomStateToConns()
 				globalRoomsHub.broadcastRooms()
@@ -2856,7 +2974,7 @@ func (rc *roomConn) readPump() {
 				if len(bs) > 1 {
 					b2 = &bs[1]
 				}
-				_ = upsertRoomPlayerWithTwo(rc.room.RoomID, rc.tid, b1, b2)
+				upsertRoomPlayerForConn(rc, b1, b2)
 				saveRoomStateToDB(rc.room)
 				rc.room.broadcastRoomStateToConns()
 				globalRoomsHub.broadcastRooms()
@@ -2889,7 +3007,7 @@ func (rc *roomConn) readPump() {
 				if len(bs) > 1 {
 					b2 = &bs[1]
 				}
-				_ = upsertRoomPlayerWithTwo(rc.room.RoomID, rc.tid, b1, b2)
+				upsertRoomPlayerForConn(rc, b1, b2)
 				saveRoomStateToDB(rc.room)
 				rc.room.broadcastRoomStateToConns()
 				globalRoomsHub.broadcastRooms()
@@ -2904,7 +3022,7 @@ func (rc *roomConn) readPump() {
 				if len(bs) > 1 {
 					b2 = &bs[1]
 				}
-				_ = upsertRoomPlayerWithTwo(rc.room.RoomID, rc.tid, b1, b2)
+				upsertRoomPlayerForConn(rc, b1, b2)
 				saveRoomStateToDB(rc.room)
 				rc.room.broadcastRoomStateToConns()
 				globalRoomsHub.broadcastRooms()

@@ -1981,7 +1981,7 @@ func callLevelForToday() int {
 	now := time.Now().In(loc)
 
 	switch now.Weekday() {
-	case time.Monday, time.Wednesday, time.Sunday:
+	case time.Friday, time.Monday, time.Saturday:
 		return 1
 	default:
 		return 0

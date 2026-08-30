@@ -1,25 +1,10 @@
 {
-    "ws_base": "wss://amber.teshie.dev",
+    "ws_base": "ws://127.0.0.1:8090",
     "rooms": [
         {
             "id": "10",
             "stake": 10,
-            "bots": 200
-        },
-        {
-            "id": "20",
-            "stake": 20,
-            "bots": 2
-        },
-        {
-            "id": "50",
-            "stake": 50,
-            "bots": 3
-        },
-        {
-            "id": "100",
-            "stake": 100,
-            "bots": 2
+            "bots": 220
         }
     ]
 }
